@@ -48,18 +48,41 @@
 
 在容器裡跑官方 claude-mem worker（npm 套件 `claude-mem`，版本由 `CLAUDE_MEM_VERSION` 固定），資料全在 `/data`，**一定要掛硬碟**。
 
-worker 的讀取 API 沒有驗證，不能直接公開。請放在 Cloudflare Tunnel + Access（service token）後面，client 用 `cloudflared access` 轉到本機再連。
+兩層保護：
+- **網路層**：Cloudflare Access。瀏覽器用 email 登入看 viewer；開發環境用 service token（Service Auth 規則）。
+- **應用層**：`CLAUDE_MEM_LOCAL_API_TOKEN`，保護 `/api/health` 以外的整個 API。官方只從 settings.json 讀它，所以由 `entrypoint.sh` 把 `CMEM_LOCAL_API_TOKEN` 寫進去。
 
-**worker 環境變數**
+連線路徑：
+```
+plugin（帶 x-claude-mem-token）→ 127.0.0.1:37777 本機轉發（帶 Access service token）
+  → Cloudflare Access → Tunnel → worker（驗 local API token）
+```
+
+### worker 環境變數（Bethau）
 | 名稱 | 值 |
 |---|---|
+| `CMEM_LOCAL_API_TOKEN` | 長隨機字串（≥16 字元），client 要填同一組 |
 | `CLAUDE_MEM_WORKER_INGEST_TOKEN` | 長隨機字串，client 要填同一組 |
-| `CLAUDE_CODE_OAUTH_TOKEN` | `claude setup-token` 產生的長效 token，用來產生 observation |
-| `CLAUDE_MEM_ALLOWED_ORIGINS` | worker 對外網址，例如 `https://mem.example.com`（Host 白名單） |
+| `CLAUDE_CODE_OAUTH_TOKEN` | `claude setup-token` 產生，用來產生 observation |
+| `CLAUDE_MEM_ALLOWED_ORIGINS` | worker 對外網址（Host 白名單） |
 
-**client（每個開發環境）** `~/.claude-mem/settings.json`：
-```json
-"CLAUDE_MEM_WORKER_URL": "http://127.0.0.1:37777",
-"CLAUDE_MEM_WORKER_INGEST_TOKEN": "<同一組>"
-```
-設好後本機不會再啟動 worker；原本在跑的要先停掉。
+### client（每個開發環境）
+
+1. 停掉本機 worker。
+2. 本機轉發（`client/`）：把 `access-proxy.env.example` 填好存成 `~/.claude-mem/access-proxy.env`，再設成開機自動啟動：
+   - Windows：`powershell -ExecutionPolicy Bypass -File .\install-windows.ps1`
+   - Linux：照 `claude-mem-access-proxy.service` 開頭的註解安裝 systemd 使用者服務
+   - 手動：`node access-proxy.mjs`
+3. `~/.claude-mem/settings.json` 加上：
+   ```json
+   "CLAUDE_MEM_WORKER_HOST": "127.0.0.1",
+   "CLAUDE_MEM_WORKER_PORT": "37777",
+   "CLAUDE_MEM_WORKER_AUTOSTART": "false",
+   "CLAUDE_MEM_HOOK_SPOOL_TRANSPORT": "http",
+   "CLAUDE_MEM_WORKER_INGEST_TOKEN": "<同 worker>",
+   "CLAUDE_MEM_LOCAL_API_TOKEN": "<同 worker>"
+   ```
+   **不要設 `CLAUDE_MEM_WORKER_URL`**：設了 plugin 就不會帶 local API token，所有請求都會被 worker 拒絕（16.0.0 實測）。
+4. 開新的 Claude Code session。
+
+升級：plugin 升級前先把 `worker/Dockerfile` 的 `CLAUDE_MEM_VERSION` 改成同一版並重新部署（先升 worker 再升 client）。

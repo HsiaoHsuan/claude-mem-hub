@@ -1,0 +1,18 @@
+# Linux：systemd 使用者服務，登入後自動啟動本機轉發。
+# 安裝：
+#   mkdir -p ~/.config/systemd/user ~/.local/share/claude-mem-hub
+#   cp access-proxy.mjs ~/.local/share/claude-mem-hub/
+#   cp claude-mem-access-proxy.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now claude-mem-access-proxy
+# 設定寫在 ~/.claude-mem/access-proxy.env（見 README）。
+[Unit]
+Description=claude-mem central worker access proxy
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/env node %h/.local/share/claude-mem-hub/access-proxy.mjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

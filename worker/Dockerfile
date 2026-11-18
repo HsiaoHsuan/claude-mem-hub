@@ -29,5 +29,7 @@ ENV HOME=/data \
 WORKDIR /data
 VOLUME /data
 EXPOSE 37777
+COPY entrypoint.sh /usr/local/bin/cmem-entrypoint
+RUN chmod 755 /usr/local/bin/cmem-entrypoint
 ENTRYPOINT ["tini", "--"]
-CMD ["bun", "/opt/claude-mem/plugin/scripts/worker-service.cjs", "--daemon"]
+CMD ["/usr/local/bin/cmem-entrypoint"]
